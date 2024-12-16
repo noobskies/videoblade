@@ -5,21 +5,25 @@ const userSchema = new mongoose.Schema({
   clerkId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
   },
   email: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  lastLoginAt: {
-    type: Date,
-    default: Date.now
+  firstName: String,
+  lastName: String,
+  imageUrl: String,
+  lastLoginAt: Date,
+  metadata: {
+    type: Map,
+    of: String
   }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
 
 export default mongoose.model('User', userSchema);
