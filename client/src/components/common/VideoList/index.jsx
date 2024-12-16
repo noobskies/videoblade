@@ -85,14 +85,14 @@ const VideoList = ({
                       <span className="text-gray-400">•</span>
                       <div className="flex items-center gap-1">
                         <PlatformIcon platform={platform} />
-                        <time 
-                          className="text-sm text-gray-500"
-                          dateTime={video.publishedAt}
-                          title={format(new Date(video.publishedAt), 'PPpp')}
+                        <time
+                            className="text-sm text-gray-500"
+                            dateTime={video.publishedAt}
+                            title={format(new Date(video.publishedAt), 'MMMM d, yyyy • h:mm a')}
                         >
-                          {formatDistance(new Date(video.publishedAt), new Date(), { addSuffix: true })}
+                            {format(new Date(video.publishedAt), 'MMMM d, yyyy • h:mm a')}
                         </time>
-                      </div>
+                        </div>
                     </div>
 
                     {/* Title */}
