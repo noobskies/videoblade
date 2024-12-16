@@ -1,36 +1,47 @@
 // client/src/components/common/Navbar.jsx
 import { UserButton } from "@clerk/clerk-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const Navbar = () => {
+  const location = useLocation();
+
+  const isActive = (path) => {
+    return location.pathname === path;
+  };
+
   return (
-    <nav className="bg-white shadow">
+    <nav className="bg-white shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16 items-center">
+        <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex-shrink-0">
-              <span className="text-2xl font-bold text-primary-600">VideoBlade</span>
+              <span className="text-2xl font-bold text-blue-600">VideoBlade</span>
             </Link>
-            <div className="hidden md:block ml-10">
-              <div className="flex space-x-4">
-                <Link 
-                  to="/" 
-                  className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Dashboard
-                </Link>
-              </div>
+            <div className="hidden md:ml-6 md:flex md:space-x-8">
+              <Link
+                to="/"
+                className={`inline-flex items-center px-1 pt-1 ${
+                  isActive('/')
+                    ? 'border-b-2 border-blue-500 text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                to="/settings"
+                className={`inline-flex items-center px-1 pt-1 ${
+                  isActive('/settings')
+                    ? 'border-b-2 border-blue-500 text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Settings
+              </Link>
             </div>
           </div>
           <div className="flex items-center">
-            <UserButton 
-              afterSignOutUrl="/sign-in"
-              appearance={{
-                elements: {
-                  avatarBox: "w-10 h-10"
-                }
-              }}
-            />
+            <UserButton afterSignOutUrl="/sign-in" />
           </div>
         </div>
       </div>
