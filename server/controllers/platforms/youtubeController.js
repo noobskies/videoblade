@@ -2,7 +2,7 @@
 import youtubeService from '../../services/platforms/youtubeService.js';
 import AppError from '../../utils/errors/AppError.js';
 import logger from '../../utils/logger.js';
-import SocialAccount from '../../models/SocialAccount.js';  // Add this import
+import SocialAccount from '../../models/SocialAccount.js';
 
 export const youtubeController = {
   async getAuthUrl(req, res) {
@@ -66,6 +66,36 @@ export const youtubeController = {
     } catch (error) {
       logger.error('Error getting YouTube account', { error: error.message });
       throw new AppError('Failed to get YouTube account information', 500);
+    }
+  },
+
+  async getVideos(req, res) {
+    try {
+      const { userId } = req.auth;
+      
+      const account = await SocialAccount.findOne({
+        userId,
+        platform: 'youtube',
+        isActive: true
+      });
+
+      if (!account) {
+        throw new AppError('No connected YouTube account found', 404);
+      }
+
+      // Refresh token if needed
+      const accessToken = await youtubeService.refreshTokenIfNeeded(account);
+      
+      // Fetch videos
+      const videos = await youtubeService.getChannelVideos(accessToken);
+      
+      res.json({
+        channelName: account.platformUsername,
+        videos
+      });
+    } catch (error) {
+      logger.error('Error getting YouTube videos', { error: error.message });
+      throw new AppError('Failed to fetch YouTube videos', 500);
     }
   }
 };

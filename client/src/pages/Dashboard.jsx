@@ -1,13 +1,17 @@
 // client/src/pages/Dashboard.jsx
+import VideoList from '../components/platforms/youtube/YouTubeVideoList';
+
 const Dashboard = () => {
   return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">
-        Welcome to VideoBlade
-      </h1>
-      <p className="text-gray-600">
-        Get started by connecting your social media accounts.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          Manage your content across platforms
+        </p>
+      </div>
+
+      <VideoList />
     </div>
   );
 };

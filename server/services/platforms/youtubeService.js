@@ -50,6 +50,62 @@ class YouTubeService {
     }
   }
 
+// server/services/platforms/youtubeService.js
+async getChannelVideos(accessToken, maxResults = 10) {
+  try {
+    this.oauth2Client.setCredentials({ access_token: accessToken });
+    
+    const response = await this.youtube.search.list({
+      auth: this.oauth2Client,
+      part: ['snippet'],
+      forMine: true,
+      type: 'video',
+      maxResults: maxResults,
+      order: 'date'
+    });
+
+    const videoIds = response.data.items.map(item => item.id.videoId);
+    
+    const statsResponse = await this.youtube.videos.list({
+      auth: this.oauth2Client,
+      part: ['statistics', 'snippet', 'player'],
+      id: videoIds
+    });
+
+    // Get channel info for author image
+    const channelResponse = await this.youtube.channels.list({
+      auth: this.oauth2Client,
+      part: ['snippet'],
+      mine: true
+    });
+
+    const channelInfo = channelResponse.data.items[0];
+    const authorImage = channelInfo.snippet.thumbnails.default.url;
+
+    const videos = statsResponse.data.items.map(video => ({
+      id: video.id,
+      title: video.snippet.title,
+      description: video.snippet.description,
+      publishedAt: video.snippet.publishedAt,
+      thumbnail: video.snippet.thumbnails.medium.url,
+      authorImage: authorImage, // Add author image
+      tags: video.snippet.tags || [],
+      embedHtml: video.player.embedHtml,
+      youtubeUrl: `https://youtube.com/watch?v=${video.id}`,
+      statistics: {
+        views: video.statistics.viewCount,
+        likes: video.statistics.likeCount,
+        comments: video.statistics.commentCount
+      }
+    }));
+
+    return videos;
+  } catch (error) {
+    logger.error('Error fetching YouTube videos', { error: error.message });
+    throw error;
+  }
+}
+
   async storeUserAccount(userId, tokens, channelData) {
     try {
       const account = await SocialAccount.findOneAndUpdate(

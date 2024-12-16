@@ -17,4 +17,7 @@ router.get('/callback', youtubeController.handleCallback);
 // Get connected account info
 router.get('/account', youtubeController.getConnectedAccount);
 
+// Get videos
+router.get('/videos', youtubeController.getVideos);
+
 export default router;
