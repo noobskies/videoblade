@@ -1,7 +1,7 @@
 // client/src/pages/platforms/YouTubeCallback.jsx
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../utils/api';  // Import our api utility
 
 const YouTubeCallback = () => {
   const navigate = useNavigate();
@@ -19,7 +19,11 @@ const YouTubeCallback = () => {
       }
 
       try {
-        await axios.get(`/api/platforms/youtube/callback?code=${code}`);
+        console.log('Sending callback with code:', code); // Debug log
+        const response = await api.get(`/platforms/youtube/callback`, {
+          params: { code }
+        });
+        console.log('Callback response:', response.data); // Debug log
         navigate('/settings?connection=success');
       } catch (err) {
         console.error('Failed to connect YouTube:', err);

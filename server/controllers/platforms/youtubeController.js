@@ -1,7 +1,8 @@
 // server/controllers/platforms/youtubeController.js
 import youtubeService from '../../services/platforms/youtubeService.js';
-import { AppError } from '../../utils/errors/AppError.js';
+import AppError from '../../utils/errors/AppError.js';
 import logger from '../../utils/logger.js';
+import SocialAccount from '../../models/SocialAccount.js';  // Add this import
 
 export const youtubeController = {
   async getAuthUrl(req, res) {
@@ -17,19 +18,14 @@ export const youtubeController = {
   async handleCallback(req, res) {
     try {
       const { code } = req.query;
-      const { userId } = req.auth; // From Clerk middleware
+      const { userId } = req.auth;
 
       if (!code) {
         throw new AppError('No authorization code provided', 400);
       }
 
-      // Get tokens from YouTube
       const tokens = await youtubeService.getTokens(code);
-      
-      // Get user's YouTube channel info
       const channelData = await youtubeService.getUserChannel(tokens.access_token);
-      
-      // Store the account info
       await youtubeService.storeUserAccount(userId, tokens, channelData);
 
       res.json({

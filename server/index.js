@@ -1,13 +1,15 @@
 // server/index.js
-import express from 'express';
 import dotenv from 'dotenv';
+// Load env vars first
+dotenv.config();
+
+import express from 'express';
 import cors from 'cors';
 import connectDB from './config/database.js';
 import clerkWebhooks from './routes/auth/clerk-webhooks.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import youtubeRoutes from './routes/platforms/youtube.js';
 import logger from './utils/logger.js';
-
-dotenv.config();
 
 // Connect to MongoDB
 connectDB().then(() => {
@@ -22,6 +24,8 @@ const app = express();
 // Regular routes middleware
 app.use(cors());
 app.use(express.json());
+
+app.use('/api/platforms/youtube', youtubeRoutes);
 
 // Webhook route - needs raw body
 app.use('/api/webhooks', (req, res, next) => {

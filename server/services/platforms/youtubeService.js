@@ -2,7 +2,7 @@
 import { google } from 'googleapis';
 import { youtubeConfig } from '../../config/platforms/youtube.js';
 import logger from '../../utils/logger.js';
-import { SocialAccount } from '../../models/SocialAccount.js';
+import SocialAccount from '../../models/SocialAccount.js';
 
 class YouTubeService {
   constructor() {

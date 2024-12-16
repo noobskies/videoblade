@@ -36,4 +36,6 @@ const socialAccountSchema = new mongoose.Schema({
 // Compound index to ensure one platform account per user
 socialAccountSchema.index({ userId: 1, platform: 1 }, { unique: true });
 
-export default mongoose.model('SocialAccount', socialAccountSchema);
+const SocialAccount = mongoose.model('SocialAccount', socialAccountSchema);
+
+export default SocialAccount;
