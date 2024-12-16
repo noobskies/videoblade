@@ -1,0 +1,18 @@
+{
+    "name": "videoblade",
+    "version": "1.0.0",
+    "description": "A social media scheduling platform",
+    "scripts": {
+      "client:dev": "cd client && npm run dev",
+      "server:dev": "cd server && npm run dev",
+      "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+      "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+      "build": "cd client && npm run build",
+      "lint": "eslint ."
+    },
+    "devDependencies": {
+      "concurrently": "^8.2.2",
+      "eslint": "^8.56.0",
+      "prettier": "^3.2.0"
+    }
+  }
