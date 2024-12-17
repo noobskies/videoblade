@@ -1,4 +1,3 @@
-// client/src/pages/SignIn.jsx
 import { SignIn } from "@clerk/clerk-react";
 
 const SignInPage = () => {
@@ -16,9 +15,8 @@ const SignInPage = () => {
         
         <div className="bg-white shadow-xl rounded-xl py-4">
           <SignIn 
-            routing="path" 
-            path="/sign-in" 
-            redirectUrl="/"
+            afterSignInUrl="/"
+            signUpUrl="/sign-up"
             appearance={{
               elements: {
                 rootBox: "w-full",
