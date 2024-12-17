@@ -2,6 +2,8 @@ import { google } from 'googleapis';
 import { youtubeConfig } from '../../config/platforms/youtube.js';
 import logger from '../../utils/logger.js';
 import SocialAccount from '../../models/SocialAccount.js';
+import AppError from '../../utils/errors/AppError.js';
+import { Readable } from 'stream';
 
 class YouTubeService {
   constructor() {
@@ -113,6 +115,57 @@ class YouTubeService {
     } catch (error) {
       logger.error('Error fetching YouTube videos', { error: error.message });
       throw error;
+    }
+  }
+
+  // Inside your YouTubeService class
+  async uploadVideo(accessToken, videoBuffer, metadata) {
+    try {
+      this.oauth2Client.setCredentials({ access_token: accessToken });
+
+      logger.info('Starting YouTube upload', { 
+        title: metadata.title,
+        privacy: metadata.privacy 
+      });
+
+      // Convert buffer to readable stream
+      const mediaStream = new Readable();
+      mediaStream._read = () => {}; // Required for Readable streams
+      mediaStream.push(videoBuffer);
+      mediaStream.push(null);
+
+      const res = await this.youtube.videos.insert({
+        auth: this.oauth2Client,
+        part: 'snippet,status',
+        requestBody: {
+          snippet: {
+            title: metadata.title,
+            description: metadata.description,
+            tags: metadata.tags
+          },
+          status: {
+            privacyStatus: metadata.privacy
+          }
+        },
+        media: {
+          body: mediaStream
+        }
+      });
+
+      logger.info('YouTube upload completed', { 
+        videoId: res.data.id 
+      });
+
+      return res.data;
+    } catch (error) {
+      logger.error('Error uploading to YouTube', { 
+        error: error.message,
+        stack: error.stack 
+      });
+      throw new AppError(
+        error.message || 'Failed to upload video to YouTube',
+        error.code === 401 ? 401 : 500
+      );
     }
   }
 

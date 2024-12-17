@@ -41,7 +41,7 @@ export const youtubeController = {
     }
   },
 
-  async getConnectedAccount(req, res, next) {  // Add next parameter
+  async getConnectedAccount(req, res, next) {
     try {
       const { userId } = req.auth;
       
@@ -118,6 +118,80 @@ export const youtubeController = {
     } catch (error) {
       logger.error('Error getting YouTube videos', { error: error.message });
       throw new AppError('Failed to fetch YouTube videos', 500);
+    }
+  },
+
+  async uploadVideo(req, res) {
+    try {
+      const { userId } = req.auth;
+      
+      // Check if we have a file
+      if (!req.file) {
+        throw new AppError('No video file provided', 400);
+      }
+
+      logger.info('Starting video upload process', { userId });
+
+      // Get the connected YouTube account
+      const account = await SocialAccount.findOne({
+        userId,
+        platform: 'youtube',
+        isActive: true
+      });
+
+      if (!account) {
+        throw new AppError('No connected YouTube account found', 404);
+      }
+
+      // Refresh token if needed
+      const accessToken = await youtubeService.refreshTokenIfNeeded(account);
+
+      // Parse metadata
+      const metadata = {
+        title: req.body.title || 'Untitled Video',
+        description: req.body.description || '',
+        tags: req.body.tags ? JSON.parse(req.body.tags) : [],
+        privacy: req.body.privacy || 'private'
+      };
+
+      logger.info('Uploading video to YouTube', { 
+        userId,
+        metadata: { ...metadata, tags: metadata.tags.length }
+      });
+
+      // Upload the video
+      const result = await youtubeService.uploadVideo(
+        accessToken,
+        req.file.buffer,
+        metadata
+      );
+
+      logger.info('Video upload completed', { 
+        userId, 
+        videoId: result.id 
+      });
+
+      res.json({
+        success: true,
+        videoId: result.id,
+        url: `https://youtube.com/watch?v=${result.id}`
+      });
+    } catch (error) {
+      logger.error('Video upload failed', { 
+        error: error.message,
+        stack: error.stack 
+      });
+      
+      // Send appropriate error response
+      if (error instanceof AppError) {
+        res.status(error.statusCode).json({ 
+          error: error.message 
+        });
+      } else {
+        res.status(500).json({ 
+          error: 'Failed to upload video' 
+        });
+      }
     }
   }
 };

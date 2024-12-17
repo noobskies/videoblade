@@ -2,6 +2,9 @@
 import express from 'express';
 import { youtubeController } from '../../controllers/platforms/youtubeController.js';
 import { requireAuth } from '../../middleware/auth.js';
+import multer from 'multer';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
@@ -19,5 +22,12 @@ router.get('/account', youtubeController.getConnectedAccount);
 
 // Get videos
 router.get('/videos', youtubeController.getVideos);
+
+// Upload video
+router.post('/upload', 
+    requireAuth, 
+    upload.single('video'), 
+    youtubeController.uploadVideo
+  );
 
 export default router;
