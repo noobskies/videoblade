@@ -19,15 +19,44 @@ export const youtubeController = {
     try {
       const { code } = req.query;
       const { userId } = req.auth;
-
+  
       if (!code) {
         throw new AppError('No authorization code provided', 400);
       }
-
-      const tokens = await youtubeService.getTokens(code);
+  
+      logger.debug('Processing YouTube callback', { 
+        userId,
+        codePresent: !!code 
+      });
+  
+      let tokens;
+      try {
+        tokens = await youtubeService.getTokens(code);
+      } catch (error) {
+        if (error.statusCode === 401) {
+          return res.status(401).json({
+            error: 'Authorization failed. Please try connecting again.',
+            needsReconnect: true
+          });
+        }
+        throw error;
+      }
+  
+      // Make sure we have the required tokens
+      if (!tokens.access_token || !tokens.refresh_token) {
+        throw new AppError('Invalid token response from YouTube', 401);
+      }
+  
       const channelData = await youtubeService.getUserChannel(tokens.access_token);
-      await youtubeService.storeUserAccount(userId, tokens, channelData);
-
+      
+      // Store the account data
+      const account = await youtubeService.storeUserAccount(userId, tokens, channelData);
+  
+      logger.info('YouTube account connected successfully', {
+        userId,
+        channelId: channelData.id
+      });
+  
       res.json({
         success: true,
         channel: {
@@ -36,8 +65,15 @@ export const youtubeController = {
         }
       });
     } catch (error) {
-      logger.error('Error handling YouTube callback', { error: error.message });
-      throw new AppError('Failed to connect YouTube account', 500);
+      logger.error('Error handling YouTube callback', { 
+        error: error.message,
+        stack: error.stack 
+      });
+  
+      // Send appropriate error response
+      res.status(error.statusCode || 500).json({
+        error: error.message || 'Failed to connect YouTube account'
+      });
     }
   },
 

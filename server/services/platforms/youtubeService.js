@@ -26,11 +26,44 @@ class YouTubeService {
 
   async getTokens(code) {
     try {
+      // Reset OAuth2 client to ensure clean state
+      this.oauth2Client = new google.auth.OAuth2(
+        youtubeConfig.clientId,
+        youtubeConfig.clientSecret,
+        youtubeConfig.redirectUri
+      );
+  
+      logger.debug('Exchanging auth code for tokens', { 
+        codeLength: code?.length 
+      });
+  
       const { tokens } = await this.oauth2Client.getToken(code);
+  
+      if (!tokens?.access_token || !tokens?.refresh_token) {
+        throw new AppError('Invalid token response from YouTube', 401);
+      }
+  
+      logger.debug('Successfully obtained tokens', {
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
+        expiryDate: tokens.expiry_date
+      });
+  
       return tokens;
     } catch (error) {
-      logger.error('Error getting YouTube tokens', { error: error.message });
-      throw error;
+      logger.error('Error getting YouTube tokens', { 
+        error: error.message,
+        code: error.code
+      });
+  
+      if (error.message?.includes('invalid_grant')) {
+        throw new AppError('Invalid or expired authorization code', 401);
+      }
+  
+      throw new AppError(
+        'Failed to exchange authorization code for tokens',
+        error.code === 401 ? 401 : 500
+      );
     }
   }
 
@@ -201,57 +234,109 @@ class YouTubeService {
     }
   }
 
-  async refreshTokenIfNeeded(socialAccount) {
-    try {
-      if (!socialAccount?.refreshToken) {
-        logger.error('No refresh token found', { accountId: socialAccount?._id });
-        throw new Error('No refresh token available');
-      }
+// youtubeService.js - refreshTokenIfNeeded method update
 
-      const now = Date.now();
-      const expiryDate = socialAccount.expiresAt?.getTime();
+async refreshTokenIfNeeded(socialAccount) {
+  try {
+    // Validate input
+    if (!socialAccount) {
+      throw new AppError('Social account is required', 400);
+    }
 
-      // If token is not expired and we have an access token, return it
-      if (expiryDate && now < expiryDate && socialAccount.accessToken) {
-        return socialAccount.accessToken;
-      }
+    if (!socialAccount.refreshToken) {
+      logger.error('No refresh token found', { accountId: socialAccount._id });
+      throw new AppError('No refresh token available', 401);
+    }
 
-      logger.debug('Refreshing token', { 
+    const now = Date.now();
+    const expiryDate = socialAccount.expiresAt?.getTime();
+
+    // If token is not expired and we have an access token, return it
+    if (expiryDate && now < expiryDate && socialAccount.accessToken) {
+      logger.debug('Using existing token', { 
         accountId: socialAccount._id,
-        lastRefresh: socialAccount.lastTokenRefresh
+        expiresAt: new Date(expiryDate)
       });
+      return socialAccount.accessToken;
+    }
 
-      // Refresh the token
-      this.oauth2Client.setCredentials({
-        refresh_token: socialAccount.refreshToken
-      });
+    logger.debug('Refreshing token', { 
+      accountId: socialAccount._id,
+      lastRefresh: socialAccount.lastTokenRefresh
+    });
 
-      const { tokens } = await this.oauth2Client.refreshAccessToken();
-      
-      // Update the stored tokens
-      const updatedAccount = await SocialAccount.findByIdAndUpdate(
-        socialAccount._id,
-        {
+    // Reset OAuth2 client to ensure clean state
+    this.oauth2Client = new google.auth.OAuth2(
+      youtubeConfig.clientId,
+      youtubeConfig.clientSecret,
+      youtubeConfig.redirectUri
+    );
+
+    // Set refresh token and attempt refresh
+    this.oauth2Client.setCredentials({
+      refresh_token: socialAccount.refreshToken
+    });
+
+    const { tokens } = await this.oauth2Client.refreshAccessToken();
+    
+    if (!tokens?.access_token) {
+      throw new AppError('Failed to obtain new access token', 401);
+    }
+
+    // Update the stored tokens
+    const updatedAccount = await SocialAccount.findByIdAndUpdate(
+      socialAccount._id,
+      {
+        $set: {
           accessToken: tokens.access_token,
           expiresAt: new Date(tokens.expiry_date),
-          lastTokenRefresh: new Date()
-        },
-        { new: true }
-      );
+          lastTokenRefresh: new Date(),
+          // Store new refresh token if provided
+          ...(tokens.refresh_token && { refreshToken: tokens.refresh_token })
+        }
+      },
+      { new: true }
+    );
 
-      if (!updatedAccount) {
-        throw new Error('Failed to update account tokens');
-      }
-
-      return tokens.access_token;
-    } catch (error) {
-      logger.error('Error refreshing YouTube token', { 
-        error: error.message,
-        accountId: socialAccount?._id 
-      });
-      throw error;
+    if (!updatedAccount) {
+      throw new AppError('Failed to update account tokens', 500);
     }
+
+    logger.debug('Token refresh successful', {
+      accountId: socialAccount._id,
+      expiresAt: tokens.expiry_date
+    });
+
+    return tokens.access_token;
+  } catch (error) {
+    logger.error('Error refreshing YouTube token', { 
+      error: error.message,
+      stack: error.stack,
+      accountId: socialAccount?._id 
+    });
+
+    // If token refresh fails, mark account as inactive
+    if (socialAccount?._id) {
+      try {
+        await SocialAccount.findByIdAndUpdate(socialAccount._id, {
+          $set: { isActive: false }
+        });
+        logger.info('Marked YouTube account as inactive', { 
+          accountId: socialAccount._id 
+        });
+      } catch (updateError) {
+        logger.error('Failed to mark account as inactive', { 
+          error: updateError.message 
+        });
+      }
+    }
+
+    throw new AppError(
+      'Failed to refresh access token',
+      error.statusCode || 401
+    );
   }
+}
 }
 
 export default new YouTubeService();
