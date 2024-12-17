@@ -41,31 +41,53 @@ export const youtubeController = {
     }
   },
 
-  async getConnectedAccount(req, res) {
+  async getConnectedAccount(req, res, next) {  // Add next parameter
     try {
       const { userId } = req.auth;
       
+      logger.debug('Fetching YouTube account', { userId });
+
+      if (!userId) {
+        throw new AppError('User ID is required', 400);
+      }
+
       const account = await SocialAccount.findOne({
         userId,
         platform: 'youtube',
         isActive: true
+      }).lean();  // Use lean() for better performance
+
+      logger.debug('YouTube account query result', { 
+        found: !!account,
+        accountId: account?._id 
       });
 
       if (!account) {
         return res.json({ connected: false });
       }
 
-      // Refresh token if needed
-      await youtubeService.refreshTokenIfNeeded(account);
+      try {
+        // Refresh token if needed
+        await youtubeService.refreshTokenIfNeeded(account);
+      } catch (refreshError) {
+        logger.error('Token refresh failed', { error: refreshError.message });
+        // If token refresh fails, we'll mark as disconnected
+        return res.json({ connected: false });
+      }
 
-      res.json({
+      return res.json({
         connected: true,
         channelName: account.platformUsername,
         channelId: account.platformUserId
       });
     } catch (error) {
-      logger.error('Error getting YouTube account', { error: error.message });
-      throw new AppError('Failed to get YouTube account information', 500);
+      logger.error('Error getting YouTube account', { 
+        error: error.message,
+        stack: error.stack 
+      });
+      
+      // Pass error to error handler middleware instead of throwing
+      return next(new AppError('Failed to get YouTube account information', 500));
     }
   },
 
