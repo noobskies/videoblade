@@ -1,7 +1,7 @@
-// client/src/pages/Settings.jsx
 import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import YouTubeConnect from '../components/platforms/youtube/YouTubeConnect';
+import FacebookConnect from '../components/platforms/facebook/FacebookConnect';
 
 const Settings = () => {
   const { user } = useUser();
@@ -54,8 +54,11 @@ const Settings = () => {
             {/* Platform Connections */}
             <div className="space-y-6">
               <YouTubeConnect />
+              <div className="border-t pt-6">
+                <FacebookConnect />
+              </div>
               
-              {/* Placeholder for future platforms */}
+              {/* Coming Soon Platforms */}
               <div className="border-t pt-6">
                 <div className="flex items-center justify-between opacity-50">
                   <div className="flex items-center space-x-4">
@@ -65,6 +68,63 @@ const Settings = () => {
                     <div>
                       <h3 className="text-lg font-medium text-gray-900">TikTok</h3>
                       <p className="text-sm text-gray-500">Coming soon</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* More Coming Soon Platforms */}
+              <div className="border-t pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Instagram */}
+                  <div className="flex items-center justify-between opacity-50">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
+                        <span className="text-gray-500">IG</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">Instagram</h3>
+                        <p className="text-sm text-gray-500">Coming soon</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Twitter/X */}
+                  <div className="flex items-center justify-between opacity-50">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
+                        <span className="text-gray-500">X</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">Twitter/X</h3>
+                        <p className="text-sm text-gray-500">Coming soon</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* LinkedIn */}
+                  <div className="flex items-center justify-between opacity-50">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
+                        <span className="text-gray-500">LI</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">LinkedIn</h3>
+                        <p className="text-sm text-gray-500">Coming soon</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Threads */}
+                  <div className="flex items-center justify-between opacity-50">
+                    <div className="flex items-center space-x-4">
+                      <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
+                        <span className="text-gray-500">TH</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-medium text-gray-900">Threads</h3>
+                        <p className="text-sm text-gray-500">Coming soon</p>
+                      </div>
                     </div>
                   </div>
                 </div>

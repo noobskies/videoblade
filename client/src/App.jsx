@@ -7,6 +7,7 @@ import SignInPage from './pages/SignIn';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import YouTubeCallback from './pages/platforms/YouTubeCallback';
+import FacebookCallback from './pages/platforms/FacebookCallback';
 import Upload from './pages/Upload';
 
 const App = () => {
@@ -23,6 +24,7 @@ const App = () => {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/platforms/youtube/callback" element={<YouTubeCallback />} />
+                <Route path="/platforms/facebook/callback" element={<FacebookCallback />} />
                 <Route path="/upload" element={<Upload />} />
                 {/* TODO: Implement these routes */}
                 {/* <Route path="/schedule" element={<Schedule />} /> */}

@@ -1,4 +1,3 @@
-// server/index.js
 import dotenv from 'dotenv';
 // Load env vars first
 dotenv.config();
@@ -6,9 +5,8 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import connectDB from './config/database.js';
-import clerkWebhooks from './routes/auth/clerk-webhooks.js';
+import routes from './routes/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import youtubeRoutes from './routes/platforms/youtube.js';
 import logger from './utils/logger.js';
 
 // Connect to MongoDB
@@ -23,12 +21,9 @@ const app = express();
 
 // Regular routes middleware
 app.use(cors());
-app.use(express.json());
 
-app.use('/api/platforms/youtube', youtubeRoutes);
-
-// Webhook route - needs raw body
-app.use('/api/webhooks', (req, res, next) => {
+// Handle raw body for webhooks
+app.use((req, res, next) => {
   if (req.originalUrl.startsWith('/api/webhooks/clerk')) {
     next();
   } else {
@@ -36,13 +31,8 @@ app.use('/api/webhooks', (req, res, next) => {
   }
 });
 
-// Routes
-app.use('/api/webhooks', clerkWebhooks);
-
-// Health check route
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+// Mount all routes under /api
+app.use('/api', routes);
 
 // Error handler must be last
 app.use(errorHandler);
