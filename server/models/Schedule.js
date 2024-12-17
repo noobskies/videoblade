@@ -1,4 +1,4 @@
-// server/models/Schedule.js
+// models/Schedule.js
 import mongoose from 'mongoose';
 
 const scheduleSchema = new mongoose.Schema({
@@ -21,9 +21,13 @@ const scheduleSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
+  timezone: {
+    type: String,
+    default: 'UTC'
+  },
   status: {
     type: String,
-    enum: ['pending', 'processing', 'completed', 'failed'],
+    enum: ['pending', 'processing', 'completed', 'failed', 'cancelled'],  // Added cancelled status
     default: 'pending'
   },
   publishedUrl: String,
@@ -32,7 +36,22 @@ const scheduleSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  lastAttempt: Date
-}, { timestamps: true });
+  lastAttempt: Date,
+  // Added publishing details
+  publishingDetails: {
+    startTime: Date,
+    endTime: Date,
+    duration: Number,  // in seconds
+    error: String
+  }
+}, { 
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+// Add index for efficient querying
+scheduleSchema.index({ userId: 1, scheduledFor: 1 });
+scheduleSchema.index({ status: 1, scheduledFor: 1 });
 
 export default mongoose.model('Schedule', scheduleSchema);
