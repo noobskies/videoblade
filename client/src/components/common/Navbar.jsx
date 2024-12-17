@@ -29,6 +29,12 @@ const Navbar = () => {
                 Dashboard
               </Link>
               <Link
+                to="/upload"
+                className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+              >
+                Upload
+              </Link>
+              <Link
                 to="/settings"
                 className={`inline-flex items-center px-1 pt-1 ${
                   isActive('/settings')
