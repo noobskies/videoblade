@@ -22,14 +22,13 @@ const VideoEventForm = ({
   const getInitialFormData = () => ({
     title: selectedEvent?.title || '',
     description: selectedEvent?.description || '',
-    platforms: selectedEvent?.platforms || [],
+    platforms: selectedEvent ? [selectedEvent.platform] : [],
     video: selectedEvent?.video || null,
     scheduledDate: selectedEvent?.start || selectedDate || new Date(),
     scheduledTime: selectedEvent?.start 
       ? selectedEvent.start.toTimeString().slice(0, 5)
       : new Date().toTimeString().slice(0, 5),
-    duration: selectedEvent?.duration || 60,
-    isAllDay: selectedEvent?.isAllDay || false
+    duration: selectedEvent?.duration || 60
   });
 
   const [formData, setFormData] = useState(getInitialFormData());
@@ -43,6 +42,11 @@ const VideoEventForm = ({
     }
   }, [isOpen, selectedEvent, selectedDate]);
 
+  const handleVideoSelect = (file) => {
+    console.log('Video file selected:', file); // Debug log
+    setVideoFile(file);
+  };
+
   const handlePlatformToggle = (platformId) => {
     setFormData(prev => ({
       ...prev,
@@ -54,10 +58,20 @@ const VideoEventForm = ({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit({
+    console.log('Video file being submitted:', videoFile); // Debug log
+    
+    if (formData.platforms.length === 0) {
+      alert('Please select at least one platform');
+      return;
+    }
+
+    const submissionData = {
       ...formData,
-      video: videoFile || formData.video
-    });
+      video: videoFile // Ensure we're passing the actual video file
+    };
+
+    console.log('Full submission data:', submissionData); // Debug log
+    onSubmit(submissionData);
     onClose();
   };
 
@@ -143,14 +157,14 @@ const VideoEventForm = ({
               Video
             </label>
             <FileUploader
-              onFileSelect={setVideoFile}
+              onFileSelect={handleVideoSelect}
               accept="video/*"
               maxSize={1024 * 1024 * 100} // 100MB
               className="w-full"
             />
-            {(videoFile || formData.video) && (
+            {videoFile && (
               <div className="mt-2 text-sm text-gray-600">
-                Selected: {videoFile?.name || formData.video.name}
+                Selected: {videoFile.name}
               </div>
             )}
           </div>
