@@ -1,4 +1,3 @@
-// client/src/components/common/Navbar.jsx
 import { UserButton } from "@clerk/clerk-react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -31,7 +30,7 @@ const Navbar = () => {
               <Link
                 to="/scheduler"
                 className={`inline-flex items-center px-1 pt-1 ${
-                  isActive('/upload')
+                  isActive('/scheduler')
                     ? 'border-b-2 border-blue-500 text-gray-900'
                     : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}

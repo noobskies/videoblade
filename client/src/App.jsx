@@ -1,4 +1,3 @@
-// client/src/App.jsx
 import { Routes, Route } from 'react-router-dom';
 import { ClerkProvider, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { BrowserRouter } from 'react-router-dom';
@@ -11,6 +10,7 @@ import FacebookCallback from './pages/platforms/FacebookCallback';
 import SchedulePost from './components/scheduler/SchedulePost';
 import ScheduledPostsList from './components/scheduler/ScheduledPostsList';
 import Upload from './pages/Upload';
+import VideoCalendar from './components/scheduler/Calendar';
 
 const App = () => {
   const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -27,11 +27,11 @@ const App = () => {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/platforms/youtube/callback" element={<YouTubeCallback />} />
                 <Route path="/platforms/facebook/callback" element={<FacebookCallback />} />
-                <Route path="/scheduler" element={<ScheduledPostsList />} />
+                <Route path="/scheduler" element={<VideoCalendar />} />
+                <Route path="/scheduler/list" element={<ScheduledPostsList />} />
                 <Route path="/scheduler/new" element={<SchedulePost />} />
                 <Route path="/upload" element={<Upload />} />
                 {/* TODO: Implement these routes */}
-                {/* <Route path="/schedule" element={<Schedule />} /> */}
                 {/* <Route path="/analytics" element={<Analytics />} /> */}
               </Routes>
             </main>
