@@ -21,6 +21,7 @@ class YouTubeService {
       access_type: 'offline',
       scope: youtubeConfig.scopes,
       include_granted_scopes: true,
+      prompt: 'consent',
     });
   }
 
