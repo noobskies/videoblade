@@ -1,197 +1,150 @@
 // server/controllers/platforms/youtubeController.js
+
+import { BasePlatformController } from './BasePlatformController.js';
 import youtubeService from '../../services/platforms/youtubeService.js';
 import AppError from '../../utils/errors/AppError.js';
 import logger from '../../utils/logger.js';
-import SocialAccount from '../../models/SocialAccount.js';
 
-export const youtubeController = {
-  async getAuthUrl(req, res) {
-    try {
-      const authUrl = youtubeService.getAuthUrl();
-      res.json({ authUrl });
-    } catch (error) {
-      logger.error('Error generating auth URL', { error: error.message });
-      throw new AppError('Failed to generate authentication URL', 500);
-    }
-  },
+class YouTubeController extends BasePlatformController {
+  constructor() {
+    super(youtubeService, 'youtube');
+    
+    // Bind methods
+    this.getUploadUrl = this.getUploadUrl.bind(this);
+    this.getVideos = this.getVideos.bind(this);
+    this.getAnalytics = this.getAnalytics.bind(this);
+  }
 
-  async handleCallback(req, res) {
+  /**
+   * Get list of uploaded videos
+   */
+  async getVideos(req, res, next) {
     try {
-      const { code } = req.query;
       const { userId } = req.auth;
-  
-      if (!code) {
-        throw new AppError('No authorization code provided', 400);
+      const { maxResults = 10, pageToken } = req.query;
+
+      const account = await this.platformService.getConnectedAccount(userId);
+      
+      if (!account) {
+        throw new AppError('No connected YouTube account found', 404);
       }
-  
-      const tokens = await youtubeService.getTokens(code);
-      const channelData = await youtubeService.getUserChannel(tokens.access_token);
-      await youtubeService.storeUserAccount(userId, tokens, channelData);
-  
+
+      const videos = await this.platformService.getChannelVideos(
+        account.accessToken,
+        maxResults,
+        pageToken
+      );
+
       res.json({
         success: true,
         channel: {
-          id: channelData.id,
-          title: channelData.snippet.title
-        }
+          name: account.platformUsername,
+          id: account.platformUserId
+        },
+        videos: videos.items,
+        pageInfo: videos.pageInfo,
+        nextPageToken: videos.nextPageToken
       });
     } catch (error) {
-      logger.error('Error handling YouTube callback', { error: error.message });
-      throw new AppError('Failed to connect YouTube account', 500);
-    }
-  },
-
-  async getConnectedAccount(req, res, next) {
-    try {
-      const { userId } = req.auth;
-      
-      logger.debug('Fetching YouTube account', { userId });
-
-      if (!userId) {
-        throw new AppError('User ID is required', 400);
-      }
-
-      const account = await SocialAccount.findOne({
-        userId,
-        platform: 'youtube',
-        isActive: true
-      }).lean();  // Use lean() for better performance
-
-      logger.debug('YouTube account query result', { 
-        found: !!account,
-        accountId: account?._id 
-      });
-
-      if (!account) {
-        return res.json({ connected: false });
-      }
-
-      try {
-        // Refresh token if needed
-        await youtubeService.refreshTokenIfNeeded(account);
-      } catch (refreshError) {
-        logger.error('Token refresh failed', { error: refreshError.message });
-        // If token refresh fails, we'll mark as disconnected
-        return res.json({ connected: false });
-      }
-
-      return res.json({
-        connected: true,
-        channelName: account.platformUsername,
-        channelId: account.platformUserId
-      });
-    } catch (error) {
-      logger.error('Error getting YouTube account', { 
+      logger.error('Error getting YouTube videos', {
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
-      
-      // Pass error to error handler middleware instead of throwing
-      return next(new AppError('Failed to get YouTube account information', 500));
+      next(error);
     }
-  },
+  }
 
-  async getVideos(req, res) {
+  /**
+   * Get video analytics
+   */
+  async getAnalytics(req, res, next) {
     try {
       const { userId } = req.auth;
-      
-      const account = await SocialAccount.findOne({
-        userId,
-        platform: 'youtube',
-        isActive: true
-      });
+      const { videoId } = req.params;
+      const { metrics = ['views', 'likes', 'comments'], days = 28 } = req.query;
 
+      const account = await this.platformService.getConnectedAccount(userId);
+      
       if (!account) {
         throw new AppError('No connected YouTube account found', 404);
       }
 
-      // Refresh token if needed
-      const accessToken = await youtubeService.refreshTokenIfNeeded(account);
-      
-      // Fetch videos
-      const videos = await youtubeService.getChannelVideos(accessToken);
-      
-      res.json({
-        channelName: account.platformUsername,
-        videos
-      });
-    } catch (error) {
-      logger.error('Error getting YouTube videos', { error: error.message });
-      throw new AppError('Failed to fetch YouTube videos', 500);
-    }
-  },
-
-  async uploadVideo(req, res) {
-    try {
-      const { userId } = req.auth;
-      
-      // Check if we have a file
-      if (!req.file) {
-        throw new AppError('No video file provided', 400);
-      }
-
-      logger.info('Starting video upload process', { userId });
-
-      // Get the connected YouTube account
-      const account = await SocialAccount.findOne({
-        userId,
-        platform: 'youtube',
-        isActive: true
-      });
-
-      if (!account) {
-        throw new AppError('No connected YouTube account found', 404);
-      }
-
-      // Refresh token if needed
-      const accessToken = await youtubeService.refreshTokenIfNeeded(account);
-
-      // Parse metadata
-      const metadata = {
-        title: req.body.title || 'Untitled Video',
-        description: req.body.description || '',
-        tags: req.body.tags ? JSON.parse(req.body.tags) : [],
-        privacy: req.body.privacy || 'private'
-      };
-
-      logger.info('Uploading video to YouTube', { 
-        userId,
-        metadata: { ...metadata, tags: metadata.tags.length }
-      });
-
-      // Upload the video
-      const result = await youtubeService.uploadVideo(
-        accessToken,
-        req.file.buffer,
-        metadata
+      const analytics = await this.platformService.getVideoAnalytics(
+        account.accessToken,
+        videoId,
+        metrics,
+        days
       );
-
-      logger.info('Video upload completed', { 
-        userId, 
-        videoId: result.id 
-      });
 
       res.json({
         success: true,
-        videoId: result.id,
-        url: `https://youtube.com/watch?v=${result.id}`
+        videoId,
+        analytics
       });
     } catch (error) {
-      logger.error('Video upload failed', { 
+      logger.error('Error getting YouTube analytics', {
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
-      
-      // Send appropriate error response
-      if (error instanceof AppError) {
-        res.status(error.statusCode).json({ 
-          error: error.message 
-        });
-      } else {
-        res.status(500).json({ 
-          error: 'Failed to upload video' 
-        });
-      }
+      next(error);
     }
   }
-};
+
+  /**
+   * Get pre-signed upload URL from YouTube
+   */
+  async getUploadUrl(req, res, next) {
+    try {
+      const { userId } = req.auth;
+      const { title, description } = req.body;
+
+      if (!title) {
+        throw new AppError('Title is required', 400);
+      }
+
+      const account = await this.platformService.getConnectedAccount(userId);
+      
+      if (!account) {
+        throw new AppError('No connected YouTube account found', 404);
+      }
+
+      // Get upload URL from YouTube
+      const uploadData = await this.platformService.getUploadUrl(
+        account.accessToken,
+        {
+          title,
+          description,
+          ...this.getPlatformSpecificMetadata(req.body)
+        }
+      );
+
+      res.json({
+        success: true,
+        uploadUrl: uploadData.uploadUrl,
+        videoId: uploadData.videoId
+      });
+    } catch (error) {
+      logger.error('Error getting YouTube upload URL', {
+        error: error.message,
+        stack: error.stack,
+        userId: req.auth?.userId,
+        body: JSON.stringify(req.body)
+      });
+      next(error);
+    }
+  }
+
+  /**
+   * Override to add YouTube-specific metadata
+   */
+  getPlatformSpecificMetadata(body) {
+    return {
+      categoryId: body.categoryId || '22', // Default to 'People & Blogs'
+      madeForKids: body.madeForKids === 'true',
+      language: body.language || 'en',
+      ...(body.playlistId && { playlistId: body.playlistId })
+    };
+  }
+}
+
+export default new YouTubeController();

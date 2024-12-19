@@ -8,6 +8,8 @@ const YouTubeConnect = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  console.log(channelInfo)
+
   useEffect(() => {
     checkConnection();
   }, []);
@@ -17,12 +19,16 @@ const YouTubeConnect = () => {
       console.log('Checking YouTube connection...'); // Debug log
       const response = await api.get('/platforms/youtube/account');
       console.log('Connection response:', response.data); // Debug log
-      setIsConnected(response.data.connected);
+  
       if (response.data.connected) {
+        setIsConnected(true);
+        const account = response.data.account;
         setChannelInfo({
-          name: response.data.channelName,
-          id: response.data.channelId
+          name: account.username,
+          id: account.platformId,
         });
+      } else {
+        setIsConnected(false);
       }
     } catch (err) {
       console.error('Connection check error:', err); // Debug log

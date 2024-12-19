@@ -1,80 +1,182 @@
+// server/services/platforms/youtubeService.js
+
 import { google } from 'googleapis';
+import { BasePlatformService } from './BasePlatformService.js';
 import { youtubeConfig } from '../../config/platforms/youtube.js';
 import logger from '../../utils/logger.js';
-import SocialAccount from '../../models/SocialAccount.js';
 import AppError from '../../utils/errors/AppError.js';
-import { Readable } from 'stream';
+import SocialAccount from '../../models/SocialAccount.js';
 
-class YouTubeService {
+class YouTubeService extends BasePlatformService {
   constructor() {
-    this.oauth2Client = new google.auth.OAuth2(
-      youtubeConfig.clientId,
-      youtubeConfig.clientSecret,
-      youtubeConfig.redirectUri
-    );
+    super('youtube', youtubeConfig);
+  }
 
+  /**
+   * Initialize YouTube API client
+   */
+  initializeClient() {
+    this.oauth2Client = new google.auth.OAuth2(
+      this.config.clientId,
+      this.config.clientSecret,
+      this.config.redirectUri
+    );
     this.youtube = google.youtube('v3');
   }
 
-  getAuthUrl() {
-    return this.oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: youtubeConfig.scopes,
-      include_granted_scopes: true,
-      prompt: 'consent',
-    });
-  }
-
-  async getTokens(code) {
+  /**
+   * Get upload URL for resumable upload
+   */
+  async getUploadUrl(accessToken, metadata) {
     try {
-      // Reset OAuth2 client to ensure clean state
-      this.oauth2Client = new google.auth.OAuth2(
-        youtubeConfig.clientId,
-        youtubeConfig.clientSecret,
-        youtubeConfig.redirectUri
-      );
-  
-      logger.debug('Exchanging auth code for tokens', { 
-        codeLength: code?.length 
+      this.oauth2Client.setCredentials({ access_token: accessToken });
+
+      // Step 1: Create the initial video resource
+      const resource = {
+        snippet: {
+          title: metadata.title,
+          description: metadata.description || '',
+          tags: metadata.tags || [],
+          categoryId: metadata.categoryId || '22',
+          defaultLanguage: metadata.language || 'en'
+        },
+        status: {
+          privacyStatus: 'private',
+          selfDeclaredMadeForKids: Boolean(metadata.madeForKids)
+        }
+      };
+
+      // Step 2: Get the resumable upload URL
+      const response = await this.youtube.videos.insert({
+        auth: this.oauth2Client,
+        part: 'snippet,status',
+        requestBody: resource,
+        media: {
+          mimeType: 'video/*'
+        }
+      }, {
+        // This ensures we get a resumable upload URL
+        uploadType: 'resumable'
       });
-  
-      const { tokens } = await this.oauth2Client.getToken(code);
-  
-      if (!tokens?.access_token || !tokens?.refresh_token) {
-        throw new AppError('Invalid token response from YouTube', 401);
+
+      // The location header contains the resumable upload URL
+      const resumableUrl = response.headers?.location;
+      
+      if (!resumableUrl) {
+        throw new Error('Failed to get upload URL from YouTube');
       }
-  
-      logger.debug('Successfully obtained tokens', {
-        hasAccessToken: !!tokens.access_token,
-        hasRefreshToken: !!tokens.refresh_token,
-        expiryDate: tokens.expiry_date
-      });
-  
-      return tokens;
+
+      return {
+        uploadUrl: resumableUrl,
+        videoId: response.data.id || null // Video ID will be assigned after actual upload
+      };
     } catch (error) {
-      logger.error('Error getting YouTube tokens', { 
+      logger.error('Error getting YouTube upload URL', {
         error: error.message,
-        code: error.code
+        stack: error.stack,
+        metadata: JSON.stringify(metadata)
       });
-  
-      if (error.message?.includes('invalid_grant')) {
-        throw new AppError('Invalid or expired authorization code', 401);
+      
+      // Check for specific YouTube API errors
+      if (error.message?.includes('quota')) {
+        throw new AppError('YouTube quota exceeded. Try again later.', 429);
       }
-  
+
+      if (error.message?.includes('exceeded the number of videos')) {
+        throw new AppError(
+          'You have reached your YouTube upload limit for today. Please try again tomorrow.',
+          429
+        );
+      }
+
+      if (error.message?.includes('invalid_grant')) {
+        throw new AppError('Authorization expired. Please reconnect your YouTube account.', 401);
+      }
+
+      if (error.message?.includes('invalid argument')) {
+        throw new AppError('Invalid video details provided. Please check your input.', 400);
+      }
+
+      // Check for other common YouTube API errors
+      if (error.code === 403) {
+        throw new AppError('You do not have permission to upload videos to this channel.', 403);
+      }
+
+      if (error.code === 401) {
+        throw new AppError('Your YouTube session has expired. Please reconnect your account.', 401);
+      }
+      
       throw new AppError(
-        'Failed to exchange authorization code for tokens',
+        'Failed to initialize YouTube upload. Please try again later.',
         error.code === 401 ? 401 : 500
       );
     }
   }
 
-  async getUserChannel(accessToken) {
+  /**
+   * Generate YouTube authorization URL
+   */
+  generateAuthUrl({ scopes }) {
+    return this.oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: scopes,
+      include_granted_scopes: true,
+      prompt: 'consent'
+    });
+  }
+
+  /**
+   * Refresh token if needed
+   */
+  async refreshTokenIfNeeded(account) {
+    try {
+      if (!this.shouldRefreshToken(account)) {
+        return account.accessToken;
+      }
+
+      logger.debug('Refreshing YouTube access token', {
+        userId: account.userId,
+        platformUserId: account.platformUserId
+      });
+
+      this.oauth2Client.setCredentials({
+        refresh_token: account.refreshToken
+      });
+
+      const { credentials } = await this.oauth2Client.refreshAccessToken();
+      
+      // Update account with new tokens
+      await SocialAccount.findByIdAndUpdate(account._id, {
+        accessToken: credentials.access_token,
+        expiresAt: new Date(credentials.expiry_date),
+        lastTokenRefresh: new Date()
+      });
+
+      return credentials.access_token;
+    } catch (error) {
+      logger.error('Error refreshing YouTube token', {
+        error: error.message,
+        userId: account.userId
+      });
+
+      if (error.message?.includes('invalid_grant')) {
+        throw new AppError('YouTube account needs to be reconnected', 401);
+      }
+
+      throw this.formatError(error, 'Failed to refresh access token');
+    }
+  }
+
+  /**
+   * Get user's YouTube channel data
+   */
+  async getUserData(accessToken) {
     try {
       this.oauth2Client.setCredentials({ access_token: accessToken });
       
       const response = await this.youtube.channels.list({
         auth: this.oauth2Client,
-        part: 'snippet',
+        part: ['snippet', 'statistics', 'contentDetails'],
         mine: true
       });
 
@@ -82,262 +184,132 @@ class YouTubeService {
         throw new Error('No channel found for user');
       }
 
-      return response.data.items[0];
+      const channel = response.data.items[0];
+      return {
+        id: channel.id,
+        username: channel.snippet.title,
+        description: channel.snippet.description,
+        customUrl: channel.snippet.customUrl,
+        country: channel.snippet.country,
+        publishedAt: channel.snippet.publishedAt,
+        thumbnails: channel.snippet.thumbnails,
+        statistics: channel.statistics
+      };
     } catch (error) {
       logger.error('Error getting YouTube channel', { error: error.message });
-      throw error;
+      throw this.formatError(error, 'Failed to get channel data');
     }
   }
 
-  async getChannelVideos(accessToken, maxResults = 10) {
+  /**
+   * Get channel videos
+   */
+  async getChannelVideos(accessToken, maxResults = 10, pageToken = null) {
     try {
       this.oauth2Client.setCredentials({ access_token: accessToken });
       
-      const response = await this.youtube.search.list({
+      // First get the video IDs
+      const searchResponse = await this.youtube.search.list({
         auth: this.oauth2Client,
-        part: ['snippet'],
+        part: ['id'],
         forMine: true,
+        maxResults,
+        order: 'date',
         type: 'video',
-        maxResults: maxResults,
-        order: 'date'
+        pageToken
       });
 
-      if (!response.data.items?.length) {
-        return [];
+      if (!searchResponse.data.items?.length) {
+        return {
+          items: [],
+          pageInfo: searchResponse.data.pageInfo,
+          nextPageToken: searchResponse.data.nextPageToken,
+          prevPageToken: searchResponse.data.prevPageToken
+        };
       }
 
-      const videoIds = response.data.items.map(item => item.id.videoId);
-      
-      const statsResponse = await this.youtube.videos.list({
+      // Get detailed video information
+      const videoIds = searchResponse.data.items.map(item => item.id.videoId);
+      const videosResponse = await this.youtube.videos.list({
         auth: this.oauth2Client,
-        part: ['statistics', 'snippet', 'player'],
+        part: ['snippet', 'statistics', 'status', 'player', 'contentDetails'],
         id: videoIds
       });
 
-      // Get channel info for author image
-      const channelResponse = await this.youtube.channels.list({
-        auth: this.oauth2Client,
-        part: ['snippet'],
-        mine: true
-      });
-
-      if (!channelResponse.data.items?.length) {
-        throw new Error('No channel found for user');
-      }
-
-      const channelInfo = channelResponse.data.items[0];
-      const authorImage = channelInfo.snippet.thumbnails.default.url;
-
-      const videos = statsResponse.data.items.map(video => ({
+      const videos = videosResponse.data.items.map(video => ({
         id: video.id,
         title: video.snippet.title,
         description: video.snippet.description,
         publishedAt: video.snippet.publishedAt,
-        thumbnail: video.snippet.thumbnails.medium.url,
-        authorImage: authorImage,
-        tags: video.snippet.tags || [],
-        embedHtml: video.player.embedHtml,
-        youtubeUrl: `https://youtube.com/watch?v=${video.id}`,
+        thumbnails: {
+          default: video.snippet.thumbnails.default?.url,
+          medium: video.snippet.thumbnails.medium?.url,
+          high: video.snippet.thumbnails.high?.url,
+          maxres: video.snippet.thumbnails.maxres?.url
+        },
+        status: {
+          privacyStatus: video.status.privacyStatus,
+          embeddable: video.status.embeddable,
+          madeForKids: video.status.madeForKids,
+          publishAt: video.status.publishAt
+        },
         statistics: {
-          views: video.statistics.viewCount,
-          likes: video.statistics.likeCount,
-          comments: video.statistics.commentCount
-        }
+          viewCount: parseInt(video.statistics.viewCount, 10) || 0,
+          likeCount: parseInt(video.statistics.likeCount, 10) || 0,
+          commentCount: parseInt(video.statistics.commentCount, 10) || 0
+        },
+        duration: video.contentDetails.duration,
+        categoryId: video.snippet.categoryId,
+        tags: video.snippet.tags || [],
+        url: `https://youtube.com/watch?v=${video.id}`,
+        embedHtml: video.player?.embedHtml
       }));
 
-      return videos;
+      return {
+        items: videos,
+        pageInfo: searchResponse.data.pageInfo,
+        nextPageToken: searchResponse.data.nextPageToken,
+        prevPageToken: searchResponse.data.prevPageToken
+      };
     } catch (error) {
-      logger.error('Error fetching YouTube videos', { error: error.message });
-      throw error;
-    }
-  }
-
-  // Inside your YouTubeService class
-  async uploadVideo(accessToken, videoBuffer, metadata) {
-    try {
-      this.oauth2Client.setCredentials({ access_token: accessToken });
-
-      logger.info('Starting YouTube upload', { 
-        title: metadata.title,
-        privacy: metadata.privacy 
-      });
-
-      // Convert buffer to readable stream
-      const mediaStream = new Readable();
-      mediaStream._read = () => {}; // Required for Readable streams
-      mediaStream.push(videoBuffer);
-      mediaStream.push(null);
-
-      const res = await this.youtube.videos.insert({
-        auth: this.oauth2Client,
-        part: 'snippet,status',
-        requestBody: {
-          snippet: {
-            title: metadata.title,
-            description: metadata.description,
-            tags: metadata.tags
-          },
-          status: {
-            privacyStatus: metadata.privacy
-          }
-        },
-        media: {
-          body: mediaStream
-        }
-      });
-
-      logger.info('YouTube upload completed', { 
-        videoId: res.data.id 
-      });
-
-      return res.data;
-    } catch (error) {
-      logger.error('Error uploading to YouTube', { 
+      logger.error('Error getting YouTube videos', { 
         error: error.message,
         stack: error.stack 
       });
-      throw new AppError(
-        error.message || 'Failed to upload video to YouTube',
-        error.code === 401 ? 401 : 500
-      );
+      throw this.formatError(error, 'Failed to fetch videos');
     }
   }
 
-  async storeUserAccount(userId, tokens, channelData) {
+  /**
+   * Get video analytics
+   */
+  async getVideoAnalytics(accessToken, videoId, metrics = ['views'], days = 28) {
     try {
-      logger.debug('Storing YouTube account', { 
-        userId,
-        channelId: channelData.id,
-        hasRefreshToken: !!tokens.refresh_token
+      this.oauth2Client.setCredentials({ access_token: accessToken });
+      
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      
+      const response = await this.youtube.analytics.reports.query({
+        auth: this.oauth2Client,
+        ids: 'channel==MINE',
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: new Date().toISOString().split('T')[0],
+        metrics: metrics.join(','),
+        dimensions: 'day',
+        filters: `video==${videoId}`
       });
 
-      const account = await SocialAccount.findOneAndUpdate(
-        { 
-          userId,
-          platform: 'youtube'
-        },
-        {
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
-          platformUserId: channelData.id,
-          platformUsername: channelData.snippet.title,
-          expiresAt: new Date(tokens.expiry_date),
-          lastTokenRefresh: new Date(),
-          isActive: true
-        },
-        { upsert: true, new: true }
-      );
-
-      return account;
+      return {
+        timeRange: `${days} days`,
+        data: response.data.rows || [],
+        columnHeaders: response.data.columnHeaders
+      };
     } catch (error) {
-      logger.error('Error storing YouTube account', { error: error.message });
-      throw error;
+      logger.error('Error getting YouTube analytics', { error: error.message });
+      throw this.formatError(error, 'Failed to fetch analytics data');
     }
   }
-
-// youtubeService.js - refreshTokenIfNeeded method update
-
-async refreshTokenIfNeeded(socialAccount) {
-  try {
-    // Validate input
-    if (!socialAccount) {
-      throw new AppError('Social account is required', 400);
-    }
-
-    if (!socialAccount.refreshToken) {
-      logger.error('No refresh token found', { accountId: socialAccount._id });
-      throw new AppError('No refresh token available', 401);
-    }
-
-    const now = Date.now();
-    const expiryDate = socialAccount.expiresAt?.getTime();
-
-    // If token is not expired and we have an access token, return it
-    if (expiryDate && now < expiryDate && socialAccount.accessToken) {
-      logger.debug('Using existing token', { 
-        accountId: socialAccount._id,
-        expiresAt: new Date(expiryDate)
-      });
-      return socialAccount.accessToken;
-    }
-
-    logger.debug('Refreshing token', { 
-      accountId: socialAccount._id,
-      lastRefresh: socialAccount.lastTokenRefresh
-    });
-
-    // Reset OAuth2 client to ensure clean state
-    this.oauth2Client = new google.auth.OAuth2(
-      youtubeConfig.clientId,
-      youtubeConfig.clientSecret,
-      youtubeConfig.redirectUri
-    );
-
-    // Set refresh token and attempt refresh
-    this.oauth2Client.setCredentials({
-      refresh_token: socialAccount.refreshToken
-    });
-
-    const { tokens } = await this.oauth2Client.refreshAccessToken();
-    
-    if (!tokens?.access_token) {
-      throw new AppError('Failed to obtain new access token', 401);
-    }
-
-    // Update the stored tokens
-    const updatedAccount = await SocialAccount.findByIdAndUpdate(
-      socialAccount._id,
-      {
-        $set: {
-          accessToken: tokens.access_token,
-          expiresAt: new Date(tokens.expiry_date),
-          lastTokenRefresh: new Date(),
-          // Store new refresh token if provided
-          ...(tokens.refresh_token && { refreshToken: tokens.refresh_token })
-        }
-      },
-      { new: true }
-    );
-
-    if (!updatedAccount) {
-      throw new AppError('Failed to update account tokens', 500);
-    }
-
-    logger.debug('Token refresh successful', {
-      accountId: socialAccount._id,
-      expiresAt: tokens.expiry_date
-    });
-
-    return tokens.access_token;
-  } catch (error) {
-    logger.error('Error refreshing YouTube token', { 
-      error: error.message,
-      stack: error.stack,
-      accountId: socialAccount?._id 
-    });
-
-    // If token refresh fails, mark account as inactive
-    if (socialAccount?._id) {
-      try {
-        await SocialAccount.findByIdAndUpdate(socialAccount._id, {
-          $set: { isActive: false }
-        });
-        logger.info('Marked YouTube account as inactive', { 
-          accountId: socialAccount._id 
-        });
-      } catch (updateError) {
-        logger.error('Failed to mark account as inactive', { 
-          error: updateError.message 
-        });
-      }
-    }
-
-    throw new AppError(
-      'Failed to refresh access token',
-      error.statusCode || 401
-    );
-  }
-}
 }
 
 export default new YouTubeService();
